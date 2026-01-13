@@ -1,0 +1,290 @@
+<!DOCTYPE html><html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Piano Interativo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      margin: 0;
+      background: #111;
+      color: #fff;
+      font-family: Arial, sans-serif;
+      text-align: center;
+    }h1 {
+  margin: 16px 0 4px;
+}
+
+#piano {
+  position: relative;
+  width: 840px;
+  height: 300px;
+  margin: 30px auto;
+  background: #222;
+  user-select: none;
+  overflow: hidden;
+}
+
+@media (max-width: 900px) {
+  #piano {
+    width: 100%;
+    height: 220px;
+  }
+}
+
+.key.white {
+  position: absolute;
+  width: 70px;
+  height: 100%;
+  background: #fff;
+  border: 1px solid #000;
+  box-sizing: border-box;
+  z-index: 1;
+}
+
+.key.black {
+  position: absolute;
+  width: 45px;
+  height: 60%;
+  background: #000;
+  z-index: 2;
+}
+
+.key.active {
+  background: #4caf50 !important;
+}
+
+.label {
+  position: absolute;
+  bottom: 6px;
+  width: 100%;
+  font-size: 12px;
+  color: #000;
+}
+
+.black .label {
+  color: #fff;
+}
+
+.info {
+  font-size: 13px;
+  opacity: .85;
+  margin-bottom: 12px;
+}
+
+  </style>
+</head>
+<body><h1>🎹 Piano Interativo</h1>
+<div class="info">PC: A S D F G H J = brancas | W E T Y U = pretas</div><div>
+  <input type="file" id="audioInput" accept="audio/*">
+  <button id="convertBtn">Converter áudio → piano</button>
+</div>
+<div class="info">O áudio é convertido para uma melodia simples (uma nota por vez)</div>
+<div id="piano"></div><script>
+  // ===== CRIAÇÃO DO PIANO =====
+  const piano = document.getElementById('piano');
+
+  const notes = [
+    {n:'C', sharp:false},{n:'C#',sharp:true},
+    {n:'D', sharp:false},{n:'D#',sharp:true},
+    {n:'E', sharp:false},
+    {n:'F', sharp:false},{n:'F#',sharp:true},
+    {n:'G', sharp:false},{n:'G#',sharp:true},
+    {n:'A', sharp:false},{n:'A#',sharp:true},
+    {n:'B', sharp:false}
+  ];
+
+  let whiteIndex = 0;
+
+  notes.forEach(note => {
+    const key = document.createElement('div');
+    key.className = 'key ' + (note.sharp ? 'black' : 'white');
+    key.dataset.note = note.n;
+
+    if (!note.sharp) {
+      key.style.left = (whiteIndex * 70) + 'px';
+      whiteIndex++;
+    } else {
+      key.style.left = ((whiteIndex * 70) - 22) + 'px';
+    }
+
+    const label = document.createElement('div');
+    label.className = 'label';
+    label.textContent = note.n;
+    key.appendChild(label);
+
+    piano.appendChild(key);
+  });
+
+  // ===== AUDIO =====
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  const audioCtx = new AudioContextClass();
+  let osc = null;
+
+  const freqs = {
+    'C':261.63,'C#':277.18,'D':293.66,'D#':311.13,'E':329.63,
+    'F':349.23,'F#':369.99,'G':392.00,'G#':415.30,
+    'A':440.00,'A#':466.16,'B':493.88
+  };
+
+  function play(note) {
+    stop();
+    osc = audioCtx.createOscillator();
+    osc.frequency.value = freqs[note];
+    osc.type = 'sine';
+    osc.connect(audioCtx.destination);
+    osc.start();
+  }
+
+  function stop() {
+    if (osc) {
+      try { osc.stop(); } catch(e){}
+      osc = null;
+    }
+  }
+
+  // ===== MOUSE =====
+  document.querySelectorAll('.key').forEach(k => {
+    k.addEventListener('mousedown', () => {
+      audioCtx.resume();
+      play(k.dataset.note);
+      k.classList.add('active');
+    });
+    k.addEventListener('mouseup', () => {
+      stop();
+      k.classList.remove('active');
+    });
+    k.addEventListener('mouseleave', () => {
+      stop();
+      k.classList.remove('active');
+    });
+  });
+
+  // ===== TECLADO PC =====
+  const keyMap = {
+    'a':'C','w':'C#','s':'D','e':'D#','d':'E',
+    'f':'F','t':'F#','g':'G','y':'G#','h':'A','u':'A#','j':'B'
+  };
+
+  document.addEventListener('keydown', e => {
+    if (e.repeat) return;
+    const note = keyMap[e.key.toLowerCase()];
+    if (!note) return;
+    audioCtx.resume();
+    play(note);
+    document.querySelectorAll('.key').forEach(k => {
+      if (k.dataset.note === note) k.classList.add('active');
+    });
+  });
+
+  document.addEventListener('keyup', e => {
+    const note = keyMap[e.key.toLowerCase()];
+    if (!note) return;
+    stop();
+    document.querySelectorAll('.key').forEach(k => k.classList.remove('active'));
+  });
+  
+  // ===== CONVERSÃO DE ÁUDIO (SIMPLES / MONOFÔNICO) =====
+  const convertBtn = document.getElementById('convertBtn');
+  const audioInput = document.getElementById('audioInput');
+  let convertedNotes = [];
+
+  convertBtn.addEventListener('click', async () => {
+    const file = audioInput.files[0];
+    if (!file) {
+      alert('Escolha um áudio primeiro');
+      return;
+    }
+
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const arrayBuffer = await file.arrayBuffer();
+    const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+    const data = audioBuffer.getChannelData(0);
+    const sr = audioBuffer.sampleRate;
+
+    convertedNotes = extractNotes(data, sr);
+
+    if (!convertedNotes.length) {
+      alert('Não consegui converter. Use áudio simples (melodia clara).');
+      return;
+    }
+
+    playTutorial();
+  });
+
+  function extractNotes(data, sr) {
+    const hop = 4096;
+    let notesOut = [];
+    let last = null;
+
+    for (let i = 0; i < data.length - hop; i += hop) {
+      const slice = data.slice(i, i + hop);
+      const freq = detectPitch(slice, sr);
+      if (!freq) continue;
+      const note = freqToNote(freq);
+      if (note && note !== last) {
+        notesOut.push(note);
+        last = note;
+      }
+    }
+    return notesOut;
+  }
+
+  function detectPitch(buf, sr) {
+    let rms = 0;
+    for (let i = 0; i < buf.length; i++) rms += buf[i] * buf[i];
+    rms = Math.sqrt(rms / buf.length);
+    if (rms < 0.01) return null;
+
+    let bestOffset = -1;
+    let bestCorr = 0;
+
+    for (let offset = 20; offset < 1000; offset++) {
+      let corr = 0;
+      for (let i = 0; i < buf.length - offset; i++) {
+        corr += buf[i] * buf[i + offset];
+      }
+      if (corr > bestCorr) {
+        bestCorr = corr;
+        bestOffset = offset;
+      }
+    }
+
+    return bestOffset > 0 ? sr / bestOffset : null;
+  }
+
+  function freqToNote(freq) {
+    const noteNames = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+    const A4 = 440;
+    const n = Math.round(12 * Math.log2(freq / A4));
+    const index = (n + 9) % 12;
+    return noteNames[index];
+  }
+
+  // ===== TUTORIAL COM BOLINHA AZUL =====
+  let tutorialIndex = 0;
+
+  function playTutorial() {
+    tutorialIndex = 0;
+    showDot();
+  }
+
+  function showDot() {
+    document.querySelectorAll('.key').forEach(k => k.classList.remove('active'));
+    if (tutorialIndex >= convertedNotes.length) return;
+    const note = convertedNotes[tutorialIndex];
+    document.querySelectorAll('.key').forEach(k => {
+      if (k.dataset.note === note) k.classList.add('active');
+    });
+  }
+
+  document.addEventListener('keydown', e => {
+    const note = keyMap[e.key.toLowerCase()];
+    if (!note) return;
+    if (note === convertedNotes[tutorialIndex]) {
+      tutorialIndex++;
+      showDot();
+    }
+  });
+
+</script></body>
+    </html>
