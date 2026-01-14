@@ -1,0 +1,84 @@
+<!DOCTYPE html><html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Piano Interativo – Estável</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+body{margin:0;background:#111;color:#fff;font-family:Arial;text-align:center}
+h1{margin:12px 0}
+#controls{margin:10px}
+button,select,input{font-size:16px;padding:6px;margin:4px}
+#piano{position:relative;width:840px;height:300px;margin:20px auto;background:#333;touch-action:none}
+.white{position:absolute;width:70px;height:100%;background:#fff;border:1px solid #000;z-index:1}
+.black{position:absolute;width:45px;height:60%;background:#000;z-index:2}
+.active{background:#4caf50!important}
+.dot{position:absolute;top:8px;left:50%;transform:translateX(-50%);width:12px;height:12px;background:#2196f3;border-radius:50%}
+.label{position:absolute;bottom:5px;width:100%;font-size:12px;color:#000}
+.black .label{color:#fff}
+@media(max-width:900px){#piano{width:100%;height:220px}.black{height:140px}}
+</style>
+</head>
+<body><h1>🎹 Piano Interativo</h1>
+<p>PC: A S D F G H J = brancas | W E T Y U = pretas</p><div id="controls">
+  <input type="file" id="audioInput" accept="audio/*">
+  <button id="convertBtn">Converter áudio</button>
+  <select id="instrument">
+    <option value="sine">Piano (Yamaha simples)</option>
+    <option value="triangle">Órgão</option>
+    <option value="square">Caixa de som</option>
+    <option value="sawtooth">Synth</option>
+  </select>
+</div><div id="piano"></div><script>
+// ===== AUDIO (FUNCIONA EM CELULAR) =====
+const AudioCtx=window.AudioContext||window.webkitAudioContext;
+const audioCtx=new AudioCtx();
+let osc=null;
+const freqs={C:261.63,'C#':277.18,D:293.66,'D#':311.13,E:329.63,F:349.23,'F#':369.99,G:392,'G#':415.3,A:440,'A#':466.16,B:493.88};
+
+function play(note){stop();osc=audioCtx.createOscillator();osc.type=document.getElementById('instrument').value;osc.frequency.value=freqs[note];osc.connect(audioCtx.destination);osc.start()}
+function stop(){if(osc){try{osc.stop()}catch(e){}osc=null}}
+
+// ===== CRIAR PIANO =====
+const piano=document.getElementById('piano');
+const layout=[{n:'C',s:0},{n:'C#',s:1},{n:'D',s:0},{n:'D#',s:1},{n:'E',s:0},{n:'F',s:0},{n:'F#',s:1},{n:'G',s:0},{n:'G#',s:1},{n:'A',s:0},{n:'A#',s:1},{n:'B',s:0}];
+let w=0;
+layout.forEach(o=>{
+ const k=document.createElement('div');k.className=o.s?'black':'white';k.dataset.note=o.n;
+ if(!o.s){k.style.left=(w*70)+'px';w++}else{k.style.left=((w*70)-22)+'px'}
+ const l=document.createElement('div');l.className='label';l.textContent=o.n;k.appendChild(l);
+ piano.appendChild(k);
+});
+
+// ===== INTERAÇÃO MOUSE / TOQUE =====
+document.querySelectorAll('#piano div').forEach(k=>{
+ k.addEventListener('pointerdown',()=>{audioCtx.resume();play(k.dataset.note);k.classList.add('active')});
+ k.addEventListener('pointerup',()=>{stop();k.classList.remove('active')});
+ k.addEventListener('pointerleave',()=>{stop();k.classList.remove('active')});
+});
+
+// ===== TECLADO PC =====
+const keyMap={'a':'C','w':'C#','s':'D','e':'D#','d':'E','f':'F','t':'F#','g':'G','y':'G#','h':'A','u':'A#','j':'B'};
+document.addEventListener('keydown',e=>{if(e.repeat)return;const n=keyMap[e.key];if(!n)return;audioCtx.resume();play(n);document.querySelectorAll('#piano div').forEach(k=>{if(k.dataset.note===n)k.classList.add('active')})});
+document.addEventListener('keyup',()=>{stop();document.querySelectorAll('#piano div').forEach(k=>k.classList.remove('active'))});
+
+// ===== CONVERSÃO SIMPLES + BOLA AZUL =====
+let guide=[];let gi=0;
+function showDot(){document.querySelectorAll('.dot').forEach(d=>d.remove());if(gi>=guide.length)return;const k=[...document.querySelectorAll('#piano div')].find(x=>x.dataset.note===guide[gi]);if(k){const d=document.createElement('div');d.className='dot';k.appendChild(d)}}
+
+document.getElementById('convertBtn').onclick=async()=>{
+ const file=document.getElementById('audioInput').files[0];if(!file)return alert('Escolha um áudio');
+ audioCtx.resume();
+ const buf=await audioCtx.decodeAudioData(await file.arrayBuffer());
+ const data=buf.getChannelData(0);
+ guide=[];
+ for(let i=0;i<data.length;i+=buf.sampleRate/3){if(Math.abs(data[i])>0.2)guide.push('C')}
+ gi=0;showDot();
+};
+
+// avançar guia quando nota correta
+document.addEventListener('pointerdown',e=>{
+ if(!e.target.dataset||!e.target.dataset.note)return;
+ if(e.target.dataset.note===guide[gi]){gi++;showDot()}
+});
+</script></body>
+</html>
